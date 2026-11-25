@@ -16,11 +16,11 @@
     color-scheme: light;
     --plane:#f9f9f7; --surface:#fcfcfb; --ink:#0b0b0b; --ink2:#52514e; --muted:#898781;
     --grid:#e1e0d9; --axis:#c3c2b7; --ring:rgba(11,11,11,0.10);
-    --s1:#4c9ced; --s2:#df7a16; --s3:#0466c8; --s4:#9f5103; --s5:#9287f3;
-    --s6:#94a310; --s7:#503dfb; --s8:#667102; --s9:#c767f0; --s10:#43b512;
-    --s11:#9604d4; --s12:#287e03; --s13:#ee50be; --s14:#12b744; --s15:#b80482;
-    --s16:#037f28; --s17:#f06371; --s18:#11b0a0; --s19:#c50417; --s20:#039486;
-    --other:#898781;
+    --s1:#3483f2; --s2:#f0311b; --s3:#1ec61e; --s4:#d10fe6; --s5:#6e6e02;
+    --s6:#d09b1f; --s7:#7319fa; --s8:#1cbbbb; --s9:#ea76bc; --s10:#bb0472;
+    --s11:#a097ef; --s12:#aa4603; --s13:#0371a0; --s14:#0a9f64; --s15:#0750fa;
+    --s16:#9a5df5; --s17:#e70fa6; --s18:#eb8377; --s19:#a504b7; --s20:#ba740c;
+--other:#898781;
     --good:#0ca30c; --warning:#fab219; --serious:#ec835a; --critical:#d03b3b;
     --div-low:#2a78d6; --div-high:#d03b3b; --div-mid:#f0efec;
     --input-bg:#fffaed; --input-ring:#e8d9a8;
@@ -30,11 +30,11 @@
       color-scheme: dark;
       --plane:#0d0d0d; --surface:#1a1a19; --ink:#f0efec; --ink2:#c3c2b7; --muted:#898781;
       --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,0.10);
-      --s1:#4496e8; --s2:#d4771a; --s3:#0972db; --s4:#af5b07; --s5:#8b80ef;
-      --s6:#8e9c13; --s7:#6353f8; --s8:#717d05; --s9:#c15feb; --s10:#43ad15;
-      --s11:#a60ae9; --s12:#2e8b06; --s13:#e846b7; --s14:#16af44; --s15:#ca0890;
-      --s16:#068d2e; --s17:#eb5a69; --s18:#15a89a; --s19:#d9091e; --s20:#069486;
-      --div-low:#3987e5; --div-high:#d03b3b; --div-mid:#383835;
+      --s1:#1172f9; --s2:#e21d06; --s3:#14b014; --s4:#c106d5; --s5:#6a6a01;
+      --s6:#ba8915; --s7:#6804fe; --s8:#13a6a6; --s9:#ea48aa; --s10:#b5016d;
+      --s11:#8b7ff0; --s12:#a44201; --s13:#016d9b; --s14:#04925a; --s15:#014af5;
+      --s16:#8e45fb; --s17:#d60697; --s18:#ec5d4d; --s19:#9f01b1; --s20:#ad6905;
+--div-low:#3987e5; --div-high:#d03b3b; --div-mid:#383835;
       --input-bg:#2a2616; --input-ring:#5a4f28;
     }
   }
@@ -42,11 +42,11 @@
     color-scheme: dark;
     --plane:#0d0d0d; --surface:#1a1a19; --ink:#f0efec; --ink2:#c3c2b7; --muted:#898781;
     --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,0.10);
-      --s1:#4496e8; --s2:#d4771a; --s3:#0972db; --s4:#af5b07; --s5:#8b80ef;
-      --s6:#8e9c13; --s7:#6353f8; --s8:#717d05; --s9:#c15feb; --s10:#43ad15;
-      --s11:#a60ae9; --s12:#2e8b06; --s13:#e846b7; --s14:#16af44; --s15:#ca0890;
-      --s16:#068d2e; --s17:#eb5a69; --s18:#15a89a; --s19:#d9091e; --s20:#069486;
-    --div-low:#3987e5; --div-high:#d03b3b; --div-mid:#383835;
+      --s1:#1172f9; --s2:#e21d06; --s3:#14b014; --s4:#c106d5; --s5:#6a6a01;
+      --s6:#ba8915; --s7:#6804fe; --s8:#13a6a6; --s9:#ea48aa; --s10:#b5016d;
+      --s11:#8b7ff0; --s12:#a44201; --s13:#016d9b; --s14:#04925a; --s15:#014af5;
+      --s16:#8e45fb; --s17:#d60697; --s18:#ec5d4d; --s19:#9f01b1; --s20:#ad6905;
+--div-low:#3987e5; --div-high:#d03b3b; --div-mid:#383835;
     --input-bg:#2a2616; --input-ring:#5a4f28;
   }
   *{box-sizing:border-box}
@@ -384,7 +384,7 @@
       ordem em que elas aparecem, e mostra quantidade total, cotação, valor e a fatia de cada ativo no
       patrimônio inteiro. Um ativo que aparece em mais de uma carteira vira uma linha só, com as
       quantidades somadas e a cotação média ponderada; a coluna "Onde está" mostra de quais carteiras ele
-      veio. O gráfico traz todos os ativos juntos: cada ativo com 0,8% ou mais do patrimônio ganha a própria fatia. O que fica abaixo disso não vira um "Outros" único: é somado por categoria, como "Outros · FIIs" ou "Outros · Renda fixa". São 20 cores próprias para os maiores; passando disso, uma rampa neutra, sempre com a legenda na mesma ordem das fatias.</p>
+      veio. O gráfico traz todos os ativos juntos: cada ativo com 0,8% ou mais do patrimônio ganha a própria fatia. O que fica abaixo disso não vira um "Outros" único: é somado por categoria, como "Outros · FIIs" ou "Outros · Renda fixa". São 20 cores em ordem de preferência, as mais diferentes entre si primeiro, de modo que uma carteira pequena receba sempre matizes bem distintos; passando de 20 ativos, uma rampa neutra, sempre com a legenda na mesma ordem das fatias.</p>
       <p>Só entram ativos com quantidade maior que zero: uma linha criada apenas para definir o alvo,
       ainda sem posição comprada, não aparece aqui.</p>
 
