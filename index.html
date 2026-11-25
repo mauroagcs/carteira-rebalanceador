@@ -274,7 +274,7 @@
       <div class="v" id="sumTotal">—</div>
       <div class="n" id="sumSub">—</div>
     </div>
-    <div class="sum-field wide">
+    <div class="sum-field wide" id="fieldAporte">
       <div class="klabel">
         <label class="k" for="contrib">Aporte do mês</label>
         <select id="contribCur" class="minisel" title="Moeda desta carteira"></select>
@@ -318,20 +318,20 @@
     </div>
   </div>
 
-  <div class="charts">
-    <div class="card">
+  <div class="charts" id="charts">
+    <div class="card" id="card-target">
       <p class="ctitle">Carteira desejada</p>
       <p class="cnote">Participação alvo de cada ativo.</p>
       <div id="donut-target"></div>
     </div>
-    <div class="card">
-      <p class="ctitle">Carteira real hoje</p>
-      <p class="cnote">Participação efetiva, convertida para reais.</p>
+    <div class="card" id="card-real">
+      <p class="ctitle" id="title-real">Carteira real hoje</p>
+      <p class="cnote" id="note-real">Participação efetiva, convertida para reais.</p>
       <div id="donut-real"></div>
     </div>
   </div>
 
-  <div class="card" style="margin-top:12px">
+  <div class="card" id="card-dev" style="margin-top:12px">
     <p class="ctitle">Distância do alvo</p>
     <p class="cnote">Em pontos percentuais. À esquerda, abaixo do alvo (comprar); à direita, acima do alvo.</p>
     <div id="dev"></div>
@@ -369,6 +369,15 @@
       <em>Atualizar preços (colar lista)</em> no menu ⋯ da tabela e cole uma lista de código e preço —
       vinda da sua corretora, de uma planilha ou do próprio chat. A data da última atualização fica
       visível acima da tabela.</p>
+
+      <h3>Aba Consolidado</h3>
+      <p>É a primeira aba e não se edita: ela soma sozinha os ativos de todas as carteiras de ativos, na
+      ordem em que elas aparecem, e mostra quantidade total, cotação, valor e a fatia de cada ativo no
+      patrimônio inteiro. Um ativo que aparece em mais de uma carteira vira uma linha só, com as
+      quantidades somadas e a cotação média ponderada; a coluna "Onde está" mostra de quais carteiras ele
+      veio. O gráfico traz todos os ativos juntos.</p>
+      <p>Só entram ativos com quantidade maior que zero: uma linha criada apenas para definir o alvo,
+      ainda sem posição comprada, não aparece aqui.</p>
 
       <h3>Backup e troca de aparelho</h3>
       <p>No menu ⋯ ao lado das abas há <em>Exportar dados (backup)</em>: ele gera um texto com tudo —
@@ -1101,6 +1110,9 @@ function blankPortfolio(name,assets){
 function classPortfolio(name,links){
   return {id:uid(),kind:"classes",name:name,contribution:0,assets:links||[]};
 }
+function consolidadoPortfolio(name){
+  return {id:uid(),kind:"consolidado",name:name||"Consolidado",contribution:0,assets:[]};
+}
 function newAsset(n,t,q,p,c){
   return {id:uid(),name:n||"",target:t||0,qty:q||0,price:p||0,
           cur:["USD","EUR","GBP"].indexOf(c)>=0?c:"BRL"};
@@ -1109,7 +1121,9 @@ function newLink(refId,target){
   return {id:uid(),refId:refId||"",target:target||0};
 }
 const isClasses=p=>p.kind==="classes";
-const sourcePortfolios=()=>S.portfolios.filter(p=>!isClasses(p));
+const isConsolidado=p=>p.kind==="consolidado";
+const isDeAtivos=p=>!isClasses(p)&&!isConsolidado(p);
+const sourcePortfolios=()=>S.portfolios.filter(isDeAtivos);
 function defaultSheets(){
   return [
     blankPortfolio("Ações BR",[
@@ -1133,7 +1147,9 @@ function seed(){
   const sheets=defaultSheets();
   const classes=classPortfolio("Classes",
     sheets.map(sh=>newLink(sh.id,1/sheets.length)));
-  return {rate:5.40,setup:2,activeId:classes.id,portfolios:[classes].concat(sheets)};
+  const cons=consolidadoPortfolio("Consolidado");
+  return {rate:5.40,setup:3,activeId:cons.id,
+          portfolios:[cons,classes].concat(sheets)};
 }
 let S=seed();
 
@@ -1170,17 +1186,65 @@ function emBRL(a){
 function moedasUsadas(){
   const set={};
   S.portfolios.forEach(p=>{
-    if(isClasses(p))return;
+    if(!isDeAtivos(p))return;
     p.assets.forEach(a=>{ if(a.cur&&a.cur!=="BRL")set[a.cur]=true; });
   });
   return set;
 }
 function portfolioTotal(p){
-  if(!p||isClasses(p))return 0;
+  if(!p||!isDeAtivos(p))return 0;
   return p.assets.reduce((s,a)=>s+a.qty*emBRL(a),0);
 }
+function computeConsolidado(p,rate){
+  const linhas=consolidar();
+  const total=linhas.reduce((s,L)=>s+L.value,0);
+  const disp=p.cur||"BRL";
+  const dr=rateOf(disp)>0?rateOf(disp):1;
+  const rows=linhas.map(L=>{
+    const rc=rateOf(L.cur)>0?rateOf(L.cur):1;
+    return {
+      a:{id:L.id,name:L.name,target:0},
+      qty:L.qty, value:L.value, origens:L.origens, curAtivo:L.cur,
+      precoBRL: L.qty>0 ? L.value/L.qty : 0,
+      precoNaMoeda: L.qty>0 ? (L.value/L.qty)/rc : 0,
+      real: total>0 ? L.value/total : 0,
+      priceBRL:0, dev:0, gap:0, alloc:0, buyQty:0, status:"ok"
+    };
+  });
+  return {p,rows,total,after:total,contribution:0,targetSum:0,gapSum:0,rate,
+          disp:disp,dispRate:dr,classes:false,consolidado:true,
+          totalUSD: rate>0?total/rate:0};
+}
+
+/* Junta os ativos de todas as carteiras de ativos, na ordem em que aparecem.
+   O mesmo código em duas carteiras vira uma linha só: quantidades somadas e
+   cotação média ponderada pelo valor. */
+function consolidar(){
+  const linhas=[], porChave={};
+  S.portfolios.forEach(p=>{
+    if(!isDeAtivos(p))return;
+    p.assets.forEach(a=>{
+      if(!(a.qty>0))return;      // quantidade zero é só alvo, não posição
+      const nome=(a.name||"").trim();
+      const valor=a.qty*emBRL(a);
+      const chave=(tickerOf(nome)||nome||a.id).toUpperCase();
+      let L=porChave[chave];
+      if(!L){
+        L={id:"c_"+chave, name:nome||"(sem nome)", cur:a.cur||"BRL",
+           qty:0, value:0, origens:[]};
+        porChave[chave]=L; linhas.push(L);
+      }
+      L.qty+=a.qty;
+      L.value+=valor;
+      if(L.origens.indexOf(p.name)<0)L.origens.push(p.name);
+    });
+  });
+  return linhas;
+}
+
 function compute(){
   const p=active(), rate=S.rate>0?S.rate:0;
+  if(isConsolidado(p))return computeConsolidado(p,rate);
   const rows = isClasses(p)
     ? p.assets.map(lnk=>{
         const src=S.portfolios.find(x=>x.id===lnk.refId);
@@ -1212,7 +1276,7 @@ function compute(){
   const disp=p.cur||"BRL";
   const dr=rateOf(disp)>0?rateOf(disp):1;     // sem cotação, mostra em reais
   return {p,rows,total,after,contribution,targetSum,gapSum,rate,
-          disp:disp, dispRate:dr,
+          disp:disp, dispRate:dr, consolidado:false,
           classes:isClasses(p), totalUSD: rate>0?total/rate:0};
 }
 
@@ -1272,6 +1336,10 @@ function statusPill(st){
 function moedaSecundaria(disp){return disp==="BRL"?"USD":"BRL";}
 function cabecalhos(c){
   const s1=SIMBOLO[c.disp], s2=SIMBOLO[moedaSecundaria(c.disp)];
+  if(c.consolidado) return [
+    ["Ativo","l"],["Onde está","l"],["Quantidade",""],["Cotação",""],
+    ["Valor "+s1,""],["Valor "+s2,""],["% da carteira",""]
+  ];
   const fim=[
     ["Valor "+s1,""],["Valor "+s2,""],["% real",""],["Desvio",""],["Situação","l"],
     ["Falta "+s1,""],["Aporte sugerido "+s1,""]
@@ -1323,6 +1391,7 @@ function selectedRowName(){
 function paintSel(){
   const tb=$("#tbody");
   const c=compute();
+  if(c.consolidado){$("#rowsel").classList.remove("on");return;}
   Array.prototype.forEach.call(tb.children,(tr,i)=>{
     const row=c.rows[i];
     tr.classList.toggle("sel",!!row&&row.a.id===selId);
@@ -1464,6 +1533,15 @@ function openBackupDialog(modo){
 
 function tabMenuItems(){
   const p=active();
+  if(isConsolidado(p)){
+    return [
+      {label:"Esta aba é automática", fn:()=>flash(
+        "A aba consolidada soma sozinha os ativos das outras carteiras. Nada para editar aqui.")},
+      {hr:true},
+      {label:"Exportar dados (backup)", fn:()=>openBackupDialog("exportar")},
+      {label:"Importar dados", fn:()=>openBackupDialog("importar")}
+    ];
+  }
   const items=[
     {label:"Renomear \u201c"+p.name+"\u201d", fn:()=>{
       const tabs=$("#tabs").querySelectorAll(".tab");
@@ -1562,6 +1640,10 @@ function openQuotesDialog(){
 }
 function tblMenuItems(){
   const c=compute();
+  if(c.consolidado) return [
+    {label:"Atualizar preços (colar lista)", fn:openQuotesDialog},
+    {label:"Copiar como CSV", fn:copyCsv}
+  ];
   return [
     {label:"Atualizar preços (colar lista)", fn:openQuotesDialog},
     {label:"Ajustar alvos para 100%", fn:normalizeTargets},
@@ -1663,6 +1745,52 @@ function renderTable(){
   tb.innerHTML="";
   renderHead(c);
   const order=sliceOrder(c);
+
+  if(c.consolidado){
+    c.rows.forEach(r=>{
+      const tr=el("tr");
+      const tdN=el("td","l");
+      const box=el("div");
+      box.style.display="flex";box.style.alignItems="center";box.style.width="100%";
+      const chip=el("span","chip");
+      chip.style.background=order.colorOf(r.a.id);
+      const nm=el("span",null,r.a.name);
+      nm.style.overflow="hidden";nm.style.textOverflow="ellipsis";nm.style.whiteSpace="nowrap";
+      box.appendChild(chip);box.appendChild(nm);
+      tdN.appendChild(box);tr.appendChild(tdN);
+
+      const tdOr=el("td","l",r.origens.join(", "));
+      tdOr.style.color="var(--muted)";tdOr.style.fontSize="12px";
+      tr.appendChild(tdOr);
+
+      tr.appendChild(el("td",null,fmtQty(r.qty)));
+      tr.appendChild(el("td",null,r.precoNaMoeda>0?fmtCur(r.precoNaMoeda,r.curAtivo):"\u2014"));
+      tr.appendChild(el("td",null,fmtD(c,r.value)));
+      tr.appendChild(el("td",null,fmtSec(c,r.value)));
+      tr.appendChild(el("td",null,fmtPct(r.real)));
+      tb.appendChild(tr);
+    });
+    if(!c.rows.length){
+      const tr=el("tr");
+      const td=el("td","l","Nenhuma posição ainda. Os ativos aparecem aqui assim que tiverem quantidade.");
+      td.colSpan=7;td.style.color="var(--muted)";td.style.padding="14px 6px";
+      tr.appendChild(td);tb.appendChild(tr);
+    }
+    const tf=$("#tfoot");tf.innerHTML="";
+    const trT=el("tr");
+    trT.appendChild(el("td","l","Total"));
+    trT.appendChild(el("td"));trT.appendChild(el("td"));trT.appendChild(el("td"));
+    trT.appendChild(el("td",null,fmtD(c,c.total)));
+    trT.appendChild(el("td",null,fmtSec(c,c.total)));
+    trT.appendChild(el("td",null,c.total>0?"100,0%":"0,0%"));
+    for(let i=0;i<7;i++){
+      const cl=trT.children[i];
+      cl.style.color="#FFFFFF";cl.style.fontWeight="700";
+      cl.style.background="#1F3864";
+    }
+    tf.appendChild(trT);
+    return;
+  }
 
   c.rows.forEach(r=>{
     const a=r.a;
@@ -1913,6 +2041,21 @@ function sliceOrder(c){
 }
 
 /* ---------- tiles ---------- */
+function ajustarModo(c){
+  const con=!!c.consolidado;
+  $("#addrow").hidden=con;
+  $("#tblmenu").hidden=false;
+  $("#fieldAporte").hidden=con;
+  $("#card-target").hidden=con;
+  $("#card-dev").hidden=con;
+  $("#charts").style.gridTemplateColumns=con?"1fr":"";
+  $("#title-real").textContent=con?"Composição da carteira":"Carteira real hoje";
+  $("#note-real").textContent=con
+    ? "Todos os ativos somados, em ordem das carteiras."
+    : "Participação efetiva, convertida para reais.";
+  if(con){ selId=null; $("#rowsel").classList.remove("on"); }
+}
+
 function renderSummary(){
   const c=compute();
   const usadas=moedasUsadas();
@@ -1937,6 +2080,11 @@ function renderSummary(){
   const n=c.rows.filter(r=>(r.a.name||"").trim()||r.value>0).length;
   let txt = n===1 ? (c.classes?"1 classe":"1 ativo")
                   : n+(c.classes?" classes":" ativos");
+  if(c.consolidado){
+    const quantas=S.portfolios.filter(isDeAtivos).length;
+    txt = c.rows.length+(c.rows.length===1?" ativo":" ativos")+
+          " \u00b7 "+quantas+(quantas===1?" carteira":" carteiras");
+  }
   if(!c.classes&&S.pricesAt){
     const d=new Date(S.pricesAt);
     const dias=Math.floor((Date.now()-S.pricesAt)/86400000);
@@ -1948,7 +2096,7 @@ function renderSummary(){
 }
 function renderAlerts(){
   const c=compute(), a=$("#alerts");a.innerHTML="";
-  if(Math.abs(c.targetSum-1)>1e-4){
+  if(!c.consolidado && Math.abs(c.targetSum-1)>1e-4){
     const w=el("div","warn bad");
     const txt=el("div",null,"Os alvos somam "+fmtPct(c.targetSum)+
       ". Enquanto não somarem 100%, a divisão do aporte fica distorcida.");
@@ -2106,8 +2254,14 @@ function hideTip(){tip.style.opacity="0";}
 /* ---------- orquestração ---------- */
 function refresh(){
   const c=compute();
-  const off=c.classes?2:5;           // 1a coluna calculada
   renderSummary();renderAlerts();
+  ajustarModo(c);
+  if(c.consolidado){                 // tudo é calculado: redesenha e sai
+    renderTable();
+    donut("#donut-real",sliceData(c,r=>r.value));
+    return;
+  }
+  const off=c.classes?2:5;           // 1a coluna calculada
   $("#addrow").textContent=c.classes?"+ Classe":"+ Ativo";
   $("#applyalloc").hidden=!c.classes;
   const tb=$("#tbody");
@@ -2201,6 +2355,18 @@ function normalizeTargets(){
 }
 async function copyCsv(){
   const c=compute();
+  if(c.consolidado){
+    const h=["Ativo","Onde está","Quantidade","Cotação","Moeda","Valor "+SIMBOLO[c.disp],"Valor R$","% da carteira"];
+    const ls=[h.join(";")];
+    c.rows.forEach(r=>ls.push([
+      r.a.name, r.origens.join(" / "), r.qty, r.precoNaMoeda.toFixed(2), r.curAtivo,
+      emDisp(c,r.value).toFixed(2), r.value.toFixed(2), (r.real*100).toFixed(2)
+    ].join(";")));
+    const t=ls.join("\n").replace(/\./g,",");
+    try{ await navigator.clipboard.writeText(t); flash("CSV copiado."); }
+    catch(err){ flash("Não consegui copiar. Selecione a tabela manualmente."); }
+    return;
+  }
   const head=c.classes
     ? ["Classe","Alvo %","Valor "+SIMBOLO[c.disp],"Valor R$","% real","Desvio p.p.","Falta "+SIMBOLO[c.disp],"Aporte sugerido "+SIMBOLO[c.disp]]
     : ["Ativo","Alvo %","Quantidade","Preço","Moeda","Valor "+SIMBOLO[c.disp],"Valor R$","% real","Desvio p.p.","Falta "+SIMBOLO[c.disp],"Aporte sugerido "+SIMBOLO[c.disp],"Qtd a comprar"];
@@ -2278,7 +2444,7 @@ function touch(){
   clearTimeout(saveTimer);
   saveTimer=setTimeout(save,700);
 }
-function snapshot(){return JSON.stringify({rate:S.rate,rateEUR:S.rateEUR||0,rateGBP:S.rateGBP||0,setup:S.setup||2,pricesAt:S.pricesAt||0,activeId:S.activeId,portfolios:S.portfolios});}
+function snapshot(){return JSON.stringify({rate:S.rate,rateEUR:S.rateEUR||0,rateGBP:S.rateGBP||0,setup:S.setup||3,pricesAt:S.pricesAt||0,activeId:S.activeId,portfolios:S.portfolios});}
 async function save(){
   const payload=snapshot();
   try{localStorage.setItem("carteira_state",payload);}catch(e){}
@@ -2298,12 +2464,14 @@ function applyRaw(raw){
     S.setup=+o.setup||0;
     S.pricesAt=+o.pricesAt||0;
     S.portfolios=o.portfolios.map(p=>{
-      const kind=p.kind==="classes"?"classes":"assets";
+      const kind = p.kind==="classes" ? "classes"
+                 : (p.kind==="consolidado" ? "consolidado" : "assets");
       const rows=Array.isArray(p.assets)?p.assets:[];
       return {
         id:p.id||uid(),kind:kind,name:p.name||"Carteira",contribution:+p.contribution||0,
         cur:["USD","EUR","GBP"].indexOf(p.cur)>=0?p.cur:"BRL",
-        assets: kind==="classes"
+        assets: kind==="consolidado" ? []
+          : kind==="classes"
           ? rows.map(l=>({id:l.id||uid(),refId:l.refId||"",target:+l.target||0}))
           : (rows.length?rows:[{}]).map(a=>({
               id:a.id||uid(),name:a.name||"",target:+a.target||0,qty:+a.qty||0,
@@ -2316,7 +2484,7 @@ function applyRaw(raw){
   }catch(e){return false;}
 }
 function migrate(){
-  if((S.setup||0)>=2)return;
+  if((S.setup||0)>=3)return;
   const have=n=>S.portfolios.some(p=>(p.name||"").trim().toLowerCase()===n.toLowerCase());
   [["Stocks","USD"],["REITs","USD"],["Personalizada","BRL"]].forEach(pair=>{
     if(!have(pair[0]))
@@ -2326,7 +2494,13 @@ function migrate(){
     S.portfolios.unshift(classPortfolio("Classes",
       sourcePortfolios().map(sp=>newLink(sp.id,0))));
   }
-  S.setup=2;
+  if(!S.portfolios.some(isConsolidado)){
+    S.portfolios.unshift(consolidadoPortfolio("Consolidado"));
+  }else{                                    // garante que fique em primeiro
+    const i=S.portfolios.findIndex(isConsolidado);
+    if(i>0)S.portfolios.unshift(S.portfolios.splice(i,1)[0]);
+  }
+  S.setup=3;
   setTimeout(save,0);
 }
 
