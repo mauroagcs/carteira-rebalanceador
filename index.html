@@ -222,6 +222,14 @@
   .devbar{position:absolute;top:0;height:14px;border-radius:4px;min-width:2px}
   .status{font-size:11.5px;color:var(--muted)}
   .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  .auto{display:inline-flex;align-items:center;gap:5px;justify-content:flex-end;width:100%;
+    padding:6px 8px;border:1px dashed var(--ring);border-radius:7px;color:var(--ink2);
+    font-variant-numeric:tabular-nums;cursor:default}
+  .auto .pt{width:6px;height:6px;border-radius:999px;background:var(--good);flex:0 0 auto}
+  .auto.velha .pt{background:var(--warning)}
+  .modal input.tk{width:100%;padding:9px 10px;border-radius:8px;background:var(--input-bg);
+    border:1px solid var(--input-ring);color:var(--ink);font-family:ui-monospace,monospace;font-size:13px}
+  .modal .linha{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:12.5px;color:var(--ink2)}
 
   /* Em telas de toque, qualquer campo com fonte abaixo de 16px faz o iOS dar
      zoom automático ao receber foco. 16px elimina o zoom na origem. */
@@ -367,6 +375,17 @@
       quantidade nem preço, é um somatório. Defina o aporte do mês ali, veja quanto vai para cada classe
       e use <em>Lançar aporte nas carteiras</em> para jogar esses valores no campo de aporte de cada aba;
       depois é só abrir cada uma para ver a divisão ativo por ativo.</p>
+
+      <h3>Cotações automáticas</h3>
+      <p>Na versão hospedada por você (GitHub Pages), o app busca sozinho ao abrir: dólar, euro e libra
+      não precisam de configuração nenhuma. Ações, FIIs e ETFs brasileiros precisam de um token gratuito
+      da brapi.dev, colado uma única vez em ⋯ &gt; <em>Cotações automáticas…</em> — ele fica guardado só
+      neste aparelho e nunca vai para o repositório. Os preços vêm com cerca de 15 minutos de atraso, o
+      que não faz diferença para acompanhamento de longo prazo.</p>
+      <p>Quando um ativo tem cotação automática, o campo de preço aparece travado, com um ponto verde ao
+      lado. Quando não tem — ativos do exterior, renda fixa, ou qualquer coisa que a API não devolva — o
+      campo continua editável normalmente. No app da Claude nada disso funciona: a sandbox bloqueia as
+      requisições, e todos os preços seguem manuais.</p>
 
       <h3>Nomes e preços</h3>
       <p>Ao editar o nome, comece a digitar o código e escolha na lista que aparece — ela traz ações,
@@ -1154,6 +1173,9 @@ function newAsset(n,t,q,p,c){
 function newLink(refId,target){
   return {id:uid(),refId:refId||"",target:target||0};
 }
+let AUTO_OK=false;          // só vira true depois de uma busca bem-sucedida
+const B3_CATS={"Ações BR":1,"FIIs":1,"ETFs BR":1};
+const BRAPI_LIVRES={PETR4:1,VALE3:1,MGLU3:1,ITUB4:1};
 const isClasses=p=>p.kind==="classes";
 const isConsolidado=p=>p.kind==="consolidado";
 const isDeAtivos=p=>!isClasses(p)&&!isConsolidado(p);
@@ -1565,6 +1587,42 @@ function openBackupDialog(modo){
   if(exportar){ta.focus();ta.select();}else{ta.focus();}
 }
 
+function openAutoDialog(){
+  const ov=el("div","overlay"), md=el("div","modal");
+  md.appendChild(el("h3",null,"Cotações automáticas"));
+  const hint=el("p","hint");
+  hint.innerHTML=
+    "<strong>Moedas</strong> (dólar, euro e libra) atualizam sozinhas, sem precisar de nada.<br>"+
+    "<strong>Ações, FIIs e ETFs brasileiros</strong> precisam de um token gratuito da "+
+    "<a href='https://brapi.dev' target='_blank' rel='noopener'>brapi.dev</a>: crie a conta, copie o token "+
+    "e cole abaixo. O plano gratuito traz os preços com cerca de 15 minutos de atraso.<br>"+
+    "<strong>Ativos do exterior</strong> não têm fonte automática: seguem editáveis à mão.";
+  md.appendChild(hint);
+  const inp=document.createElement("input");
+  inp.className="tk";inp.type="password";inp.placeholder="token da brapi (opcional)";
+  inp.value=S.brapiToken||"";
+  md.appendChild(inp);
+  const nota=el("div","linha");
+  nota.textContent="O token fica guardado só neste aparelho, junto com suas carteiras. "+
+    "Ele nunca vai para o GitHub nem aparece no endereço das requisições.";
+  md.appendChild(nota);
+  const acts=el("div","acts");
+  const cancelar=el("button","btn","Fechar");cancelar.onclick=()=>ov.remove();
+  const salvar=el("button","btn primary","Salvar e atualizar");
+  salvar.onclick=()=>{
+    S.brapiToken=inp.value.trim();
+    S.semCotacao={};
+    touch();ov.remove();
+    atualizarAutomatico(true);
+  };
+  acts.appendChild(cancelar);acts.appendChild(salvar);
+  md.appendChild(acts);
+  ov.appendChild(md);
+  ov.addEventListener("pointerdown",e=>{if(e.target===ov)ov.remove();});
+  document.body.appendChild(ov);
+  inp.focus();
+}
+
 function tabMenuItems(){
   const p=active();
   if(isConsolidado(p)){
@@ -1572,6 +1630,7 @@ function tabMenuItems(){
       {label:"Esta aba é automática", fn:()=>flash(
         "A aba consolidada soma sozinha os ativos das outras carteiras. Nada para editar aqui.")},
       {hr:true},
+      {label:"Cotações automáticas…", fn:openAutoDialog},
       {label:"Exportar dados (backup)", fn:()=>openBackupDialog("exportar")},
       {label:"Importar dados", fn:()=>openBackupDialog("importar")}
     ];
@@ -1601,6 +1660,7 @@ function tabMenuItems(){
     }}
   ];
   items.push({hr:true});
+  items.push({label:"Cotações automáticas…", fn:openAutoDialog});
   items.push({label:"Exportar dados (backup)", fn:()=>openBackupDialog("exportar")});
   items.push({label:"Importar dados", fn:()=>openBackupDialog("importar")});
   if(S.portfolios.length>1){
@@ -1655,6 +1715,7 @@ function openQuotesDialog(){
     S.portfolios.forEach(p=>{
       if(isClasses(p))return;
       p.assets.forEach(a=>{
+        if(podeAuto(a))return;              // esse vem da API, não se sobrescreve
         const tk=tickerOf(a.name);
         if(tk&&map[tk]!==undefined){a.price=map[tk];hit++;found[tk]=1;}
       });
@@ -1675,10 +1736,12 @@ function openQuotesDialog(){
 function tblMenuItems(){
   const c=compute();
   if(c.consolidado) return [
+    {label:"Buscar cotações agora", fn:()=>atualizarAutomatico(true)},
     {label:"Atualizar preços (colar lista)", fn:openQuotesDialog},
     {label:"Copiar como CSV", fn:copyCsv}
   ];
   return [
+    {label:"Buscar cotações agora", fn:()=>atualizarAutomatico(true)},
     {label:"Atualizar preços (colar lista)", fn:openQuotesDialog},
     {label:"Ajustar alvos para 100%", fn:normalizeTargets},
     {label:"Copiar como CSV", fn:copyCsv}
@@ -1860,7 +1923,18 @@ function renderTable(){
       });
       tr.appendChild(numCell(a.target*100,v=>{a.target=v/100;},"%",58));
       tr.appendChild(numCell(a.qty,v=>{a.qty=v;},"",74));
-      tr.appendChild(numCell(a.price,v=>{a.price=v;S.pricesAt=Date.now();},"",98));
+      if(podeAuto(a)){
+        const td=el("td");
+        const cx=el("div","auto");
+        const dias=S.pricesAt?Math.floor((Date.now()-S.pricesAt)/86400000):99;
+        if(dias>1)cx.classList.add("velha");
+        cx.appendChild(el("span","pt"));
+        cx.appendChild(el("span",null,a.price>0?fmtCur(a.price,"BRL"):"—"));
+        cx.title="Cotação automática (brapi, atraso de 15 min). Não é editável.";
+        td.appendChild(cx);tr.appendChild(td);
+      }else{
+        tr.appendChild(numCell(a.price,v=>{a.price=v;S.pricesAt=Date.now();},"",98));
+      }
       const tdCur=el("td");
       const sel=document.createElement("select");sel.className="fill";sel.style.width="74px";
       MOEDAS.forEach(m=>{const o=document.createElement("option");o.value=m[0];
@@ -2484,6 +2558,122 @@ function flash(msg){
   clearTimeout(flash.t);flash.t=setTimeout(()=>{s.textContent=statusLine();},3500);
 }
 
+/* ---------- cotações automáticas ---------- */
+/* Só funciona fora do artifact: a sandbox da Claude bloqueia requisições de rede.
+   Moedas vêm da AwesomeAPI, sem chave. Ativos da B3 vêm da brapi, que pede um
+   token guardado apenas neste aparelho — nunca no repositório. */
+function ehDaB3(a){
+  if((a.cur||"BRL")!=="BRL")return false;
+  const tk=tickerOf(a.name); if(!tk)return false;
+  const e=CAT_POR_CODIGO[tk];
+  return !!(e&&B3_CATS[e]);
+}
+function podeAuto(a){
+  if(!AUTO_OK||!ehDaB3(a))return false;
+  const tk=tickerOf(a.name);
+  if(S.semCotacao&&S.semCotacao[tk])return false;      // a API não devolveu este
+  return !!(S.brapiToken||BRAPI_LIVRES[tk]);
+}
+function ticketsB3(){
+  const set={};
+  S.portfolios.forEach(p=>{ if(!isDeAtivos(p))return;
+    p.assets.forEach(a=>{ if(ehDaB3(a)){const t=tickerOf(a.name); if(t)set[t]=1;} }); });
+  return Object.keys(set);
+}
+async function buscarMoedas(){
+  const r=await fetch("https://economia.awesomeapi.com.br/json/last/USD-BRL,EUR-BRL,GBP-BRL");
+  if(!r.ok)throw new Error("moedas "+r.status);
+  const j=await r.json();
+  // a AwesomeAPI devolve os valores como texto; aceita bid ou ask
+  const v=o=>{
+    if(!o)return 0;
+    for(const k of ["bid","ask","high"]){
+      const x=parseFloat(o[k]);
+      if(isFinite(x)&&x>0)return x;
+    }
+    return 0;
+  };
+  let n=0;
+  if(v(j.USDBRL)>0){S.rate=v(j.USDBRL);n++;}
+  if(v(j.EURBRL)>0){S.rateEUR=v(j.EURBRL);n++;}
+  if(v(j.GBPBRL)>0){S.rateGBP=v(j.GBPBRL);n++;}
+  return n;
+}
+async function buscarB3(lista){
+  const achados={}, faltando={};
+  for(let i=0;i<lista.length;i+=10){
+    const lote=lista.slice(i,i+10);
+    const h={};
+    if(S.brapiToken)h["Authorization"]="Bearer "+S.brapiToken;   // nunca na URL
+    let j=null;
+    try{
+      const r=await fetch("https://brapi.dev/api/quote/"+encodeURIComponent(lote.join(",")),{headers:h});
+      if(r.status===401||r.status===403)throw new Error("token");
+      if(!r.ok)throw new Error(String(r.status));
+      j=await r.json();
+    }catch(e){ lote.forEach(t=>faltando[t]=1); continue; }
+    if(j&&j.error){ lote.forEach(t=>faltando[t]=1); continue; }
+    const res=(j&&(j.results||j.stocks))||[];
+    const vistos={};
+    // nomes de campo variam entre versões da API: aceita os mais comuns
+    const preco=q=>{
+      for(const k of ["regularMarketPrice","price","close","regularMarketPreviousClose"]){
+        const v=parseFloat(q&&q[k]);
+        if(isFinite(v)&&v>0)return v;
+      }
+      return 0;
+    };
+    res.forEach(q=>{
+      const sym=(q&&(q.symbol||q.stock||q.ticker)||"").toUpperCase();
+      const pr=preco(q);
+      if(sym&&pr>0){achados[sym]=pr;vistos[sym]=1;}
+    });
+    lote.forEach(t=>{ if(!vistos[t])faltando[t]=1; });
+  }
+  return {achados,faltando};
+}
+function aplicarPrecos(mapa){
+  let n=0;
+  S.portfolios.forEach(p=>{ if(!isDeAtivos(p))return;
+    p.assets.forEach(a=>{
+      const t=tickerOf(a.name);
+      if(t&&mapa[t]>0&&a.price!==mapa[t]){a.price=mapa[t];n++;}
+      else if(t&&mapa[t]>0)n++;
+    }); });
+  return n;
+}
+let buscando=false;
+async function atualizarAutomatico(manual){
+  if(buscando)return;
+  buscando=true;
+  const st=$("#status");
+  if(manual)st.textContent="Buscando cotações…";
+  let moedas=0, precos=0, erro=null;
+  try{
+    moedas=await buscarMoedas();
+    AUTO_OK=true;
+  }catch(e){ erro="rede"; }
+  if(AUTO_OK){
+    const lista=ticketsB3().filter(t=>S.brapiToken||BRAPI_LIVRES[t]);
+    if(lista.length){
+      try{
+        const {achados,faltando}=await buscarB3(lista);
+        precos=aplicarPrecos(achados);
+        S.semCotacao=faltando;
+      }catch(e){ /* mantém o que já havia */ }
+    }
+    if(precos||moedas){S.pricesAt=Date.now();touch();}
+  }
+  buscando=false;
+  renderAll();
+  if(erro)st.textContent="Sem conexão com as fontes de cotação. Os preços seguem editáveis.";
+  else{
+    const faltam=Object.keys(S.semCotacao||{});
+    flash(moedas+" cotação(ões) de moeda e "+precos+" preço(s) atualizados"+
+      (faltam.length?" · sem retorno para: "+faltam.join(", "):"")+".");
+  }
+}
+
 /* ---------- persistência ---------- */
 let DB=null,UID=null,ready=false,saveTimer=null,dbState="iniciando";
 function statusLine(){
@@ -2495,7 +2685,7 @@ function touch(){
   clearTimeout(saveTimer);
   saveTimer=setTimeout(save,700);
 }
-function snapshot(){return JSON.stringify({rate:S.rate,rateEUR:S.rateEUR||0,rateGBP:S.rateGBP||0,setup:S.setup||3,pricesAt:S.pricesAt||0,activeId:S.activeId,portfolios:S.portfolios});}
+function snapshot(){return JSON.stringify({rate:S.rate,rateEUR:S.rateEUR||0,rateGBP:S.rateGBP||0,setup:S.setup||3,pricesAt:S.pricesAt||0,brapiToken:S.brapiToken||"",activeId:S.activeId,portfolios:S.portfolios});}
 async function save(){
   const payload=snapshot();
   try{localStorage.setItem("carteira_state",payload);}catch(e){}
@@ -2514,6 +2704,8 @@ function applyRaw(raw){
     S.rateGBP=+o.rateGBP||0;
     S.setup=+o.setup||0;
     S.pricesAt=+o.pricesAt||0;
+    S.brapiToken=typeof o.brapiToken==="string"?o.brapiToken:"";
+    S.semCotacao={};
     S.portfolios=o.portfolios.map(p=>{
       const kind = p.kind==="classes" ? "classes"
                  : (p.kind==="consolidado" ? "consolidado" : "assets");
@@ -2565,6 +2757,9 @@ function migrate(){
   const timer=setTimeout(()=>{
     if(!ready){dbState=dbState==="db"?"db":"local";$("#status").textContent=statusLine();}
   },10000);
+
+  // fora do artifact, tenta as cotações assim que abre
+  if(hospedadoForaDoArtifact())setTimeout(()=>{atualizarAutomatico(false);},400);
 
   (async()=>{
     try{
